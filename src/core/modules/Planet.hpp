@@ -83,6 +83,16 @@ public:
 //! aligns with the parent planet's rotational axis.
 class Planet : public StelObject
 {
+
+public:
+    static void setForcedObliquityRadians(double rad);
+    static void enableForcedObliquity(bool on);
+
+private:
+    static double s_forcedObliquity;
+    static bool s_forceObliquity;
+};
+
 public:
 	static const QString PLANET_TYPE;
 	friend class SolarSystem;
