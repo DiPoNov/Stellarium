@@ -1,0 +1,55 @@
+name: Build Stellarium Windows
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'        # Запускается при пуше тега, например v1.0.0
+  workflow_dispatch:    # Позволяет запускать вручную из GitHub UI
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '5.15.2'    # или версия Qt, которую ты используешь
+        host: 'windows'
+        target: 'desktop'
+        arch: 'win64_msvc2019_64'  # или архитектура, которую ты хочешь
+
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_PREFIX_PATH="${{ runner.workspace }}/Qt/5.15.2/msvc2019_64/lib/cmake" `
+          -DCMAKE_INSTALL_PREFIX="${{ runner.workspace }}/build/install"
+
+    - name: Build project
+      run: cmake --build build --config Release --target INSTALL
+
+    - name: Upload .exe artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: stellarium-windows
+        path: build/install/bin/*.exe   # или папка, где после установки появляются exe
+
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload Installer to Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/install/bin/*.exe  # путь к exe, который надо прикрепить к релизу
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
