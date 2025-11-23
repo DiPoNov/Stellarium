@@ -1725,14 +1725,6 @@ Vec3d Planet::getJ2000EquatorialPos(const StelCore *core) const
 // TODO: It is unclear what other planets should deliver here.
 //     In any case, re.obliquity could now be updated during computeTransMatrix()
 // В Planet.hpp
-public:
-    static void setForcedObliquityRadians(double rad);
-    static void enableForcedObliquity(bool on);
-private:
-    static double s_forcedObliquity;
-    static bool s_forceObliquity;
-
-// В Planet.cpp
 double Planet::s_forcedObliquity = 0.0;
 bool Planet::s_forceObliquity = false;
 
