@@ -16,12 +16,13 @@ jobs:
       - name: Install Qt5
         uses: jurplel/install-qt-action@v4
         with:
-          version: '5.15.*'
+          version: '5.15.2'
           host: windows
           target: desktop
           arch: win64_msvc2019_64
-          modules: qtcharts qtwebengine    # ← укажите только реально поддерживаемые модули
+          modules: qtcharts qtscript
           outputdir: D:\a\Stellarium\Qt
+
 
 
 
