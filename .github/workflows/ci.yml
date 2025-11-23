@@ -20,7 +20,9 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2019_64
-          modules: qtcharts qttools qtx11extras
+          modules: qtcharts qtdeclarative qtquickcontrols2 qtwebengine qtserialport
+          outputdir: D:\a\Stellarium\Qt
+
 
       - name: Configure CMake
         shell: pwsh
