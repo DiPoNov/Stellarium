@@ -1,29 +1,25 @@
-name: "CI Windows + cross‑platform"
+name: "Build Stellarium Windows"
 
 on:
   push:
-    branches: [ master ]
-    tags: [ 'v*' ]        # если хочешь релизы при теге
-  pull_request:
-    branches: [ master ]
+    branches: [ main ]
+    tags: [ 'v*' ]
 
 jobs:
-  # --- Windows build ---
   ci-windows:
-    name: "Windows (Qt6)"
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Qt
+      - name: Install Qt5
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.*'            # можно подставить нужную версию
+          version: '5.15.*'
           host: windows
           target: desktop
-          arch: win64_msvc2022        # или нужный твой вариант
+          arch: win64_msvc2019_64
 
       - name: Configure CMake
         run: |
@@ -38,7 +34,7 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -- /m:4
 
-      - name: Package .exe and DLLs
+      - name: Package .exe
         run: |
           cd build/Release
           mkdir dist
@@ -51,26 +47,3 @@ jobs:
         with:
           name: stellarium-windows
           path: build/Release/stellarium-windows.zip
-
-  # --- Публикация релиза (если тег) ---
-  publish-release:
-    name: "Publish Release"
-    needs: ci-windows
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: stellarium-windows
-          path: artifacts/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref }}
-          name: "Stellarium ${{ github.ref_name }}"
-          files: artifacts/stellarium-windows.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
