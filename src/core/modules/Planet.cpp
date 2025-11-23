@@ -72,6 +72,8 @@
 const QString Planet::PLANET_TYPE = QStringLiteral("Planet");
 
 bool Planet::shaderError = false;
+double Planet::s_forcedObliquity = 0.0;
+bool Planet::s_forceObliquity = false;
 
 Vec3f Planet::labelColor = Vec3f(0.4f,0.4f,0.8f);
 Vec3f Planet::orbitColor = Vec3f(1.0f,0.6f,1.0f);
@@ -1725,8 +1727,6 @@ Vec3d Planet::getJ2000EquatorialPos(const StelCore *core) const
 // TODO: It is unclear what other planets should deliver here.
 //     In any case, re.obliquity could now be updated during computeTransMatrix()
 // В Planet.hpp
-double Planet::s_forcedObliquity = 0.0;
-bool Planet::s_forceObliquity = false;
 
 void Planet::setForcedObliquityRadians(double rad) {
     s_forcedObliquity = rad;
