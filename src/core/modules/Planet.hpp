@@ -91,7 +91,6 @@ public:
 private:
     static double s_forcedObliquity;
     static bool s_forceObliquity;
-};
 
 public:
 	static const QString PLANET_TYPE;
