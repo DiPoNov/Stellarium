@@ -5,47 +5,105 @@ on:
     branches: [ main ]
     tags: [ 'v*' ]
 
+env:
+  BUILD_TYPE: Release
+
 jobs:
-  ci-windows:
+  build-windows:
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Install Qt5
+      - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: '5.15.2'
-          host: windows
-          target: desktop
-          arch: win64_msvc2019_64
-          modules: qtcharts qtscript
-          outputdir: D:\a\Stellarium\Qt
-
-
-
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
+          install-deps: true
+          modules: 'qtbase qttools qtserialport qtscript qtmultimedia qt5compat'
 
       - name: Configure CMake
         shell: pwsh
         run: |
           mkdir build
           cd build
-          cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.QT_DIR }}" -DENABLE_TESTING=ON "${{ github.workspace }}"
+          cmake -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -DCMAKE_PREFIX_PATH="$env:QT_DIR" `
+            -DENABLE_TESTING=ON `
+            "${{ github.workspace }}"
 
       - name: Build
-        run: cmake --build build --config Release -- /m:4
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 4
 
-      - name: Package .exe
+      - name: Find built executables
+        shell: pwsh
         run: |
-          cd build/Release
-          mkdir dist
-          xcopy /Y *.exe dist\
-          xcopy /Y *.dll dist\
-          powershell -Command "Compress-Archive -Path dist\\* -DestinationPath stellarium-windows.zip"
+          echo "=== Built files in build/ ==="
+          dir build -Recurse -Include *.exe, *.dll
+          echo "=== Built files in build/Release/ ==="
+          dir build/Release -Recurse -Include *.exe, *.dll
+
+      - name: Deploy with windeployqt
+        shell: pwsh
+        run: |
+          # Find the main executable
+          $exePath = Get-ChildItem -Path build -Recurse -Include "stellarium.exe" | Select-Object -First 1
+          if (-not $exePath) {
+            Write-Error "stellarium.exe not found!"
+            Get-ChildItem -Path build -Recurse -Include *.exe
+            exit 1
+          }
+          Write-Host "Found stellarium.exe at: $($exePath.FullName)"
+          
+          # Use windeployqt to copy Qt dependencies
+          $QtBinPath = "$env:QT_DIR/bin"
+          & "$QtBinPath/windeployqt.exe" --release --compiler-runtime --no-translations "$($exePath.FullName)"
+
+      - name: Package Application
+        shell: pwsh
+        run: |
+          # Create distribution directory
+          $distDir = "stellarium-dist"
+          New-Item -ItemType Directory -Path $distDir -Force
+          
+          # Find the directory containing stellarium.exe
+          $exeDir = (Get-ChildItem -Path build -Recurse -Include "stellarium.exe" | Select-Object -First 1).DirectoryName
+          Write-Host "Copying from: $exeDir"
+          
+          # Copy all necessary files
+          Copy-Item -Path "$exeDir/*.exe" -Destination $distDir/
+          Copy-Item -Path "$exeDir/*.dll" -Destination $distDir/
+          Copy-Item -Path "$exeDir/*.qm" -Destination $distDir/ -ErrorAction SilentlyContinue
+          
+          # Copy Qt plugins if they exist
+          if (Test-Path "$exeDir/platforms") {
+            Copy-Item -Recurse -Path "$exeDir/platforms" -Destination $distDir/
+          }
+          if (Test-Path "$exeDir/iconengines") {
+            Copy-Item -Recurse -Path "$exeDir/iconengines" -Destination $distDir/
+          }
+          if (Test-Path "$exeDir/imageformats") {
+            Copy-Item -Recurse -Path "$exeDir/imageformats" -Destination $distDir/
+          }
+          
+          # Create ZIP archive
+          $version = if ($env:GITHUB_REF -like "refs/tags/*") { 
+            $env:GITHUB_REF -replace "refs/tags/v", "" 
+          } else { 
+            "dev-$($env:GITHUB_SHA.Substring(0, 7))" 
+          }
+          Compress-Archive -Path "$distDir/*" -DestinationPath "stellarium-$version-windows-x64.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: stellarium-windows
-          path: build/Release/stellarium-windows.zip
+          path: stellarium-*-windows-x64.zip
+          retention-days: 7
