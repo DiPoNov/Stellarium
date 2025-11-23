@@ -19,7 +19,7 @@ jobs:
         with:
           submodules: recursive
 
-      # Шаг 2: Установка Qt с инструментами
+      # Шаг 2: Установка Qt с ВСЕМИ нужными модулями для Stellarium
       - name: Установка Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -27,8 +27,8 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2019_64'
+          # Добавляем ВСЕ модули которые могут понадобиться Stellarium
           modules: 'qtcharts qtscript'
-          tools: true
 
       # Шаг 3: Конфигурация CMake
       - name: Конфигурация CMake
@@ -45,6 +45,19 @@ jobs:
       - name: Сборка
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 4
 
+      # Шаг 5: Проверка сборки
+      - name: Проверка сборки
+        shell: pwsh
+        run: |
+          $exeFiles = Get-ChildItem -Path build -Recurse -Include "stellarium.exe" -ErrorAction SilentlyContinue
+          if ($exeFiles) {
+            echo "✅ Успешно! Найдены файлы:"
+            $exeFiles | Format-Table FullName, Length
+          } else {
+            echo "❌ stellarium.exe не найден"
+            echo "=== Все exe файлы ==="
+            Get-ChildItem -Path build -Recurse -Include "*.exe" -ErrorAction SilentlyContinue
+          }
       # Шаг 5: Поиск windeployqt и копирование зависимостей
       - name: Копирование зависимостей Qt
         if: success()
