@@ -1,29 +1,22 @@
-name: "Сборка Stellarium с Qt 5.15.2"
+name: "Узнаем доступные модули Qt"
 
 on: [push]
 
 jobs:
-  build:
+  check-qt-modules:
     runs-on: windows-latest
-    
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Установка Qt 5.15.2
-      uses: jurplel/install-qt-action@v4
-      with:
-        version: '5.15.2'
-        host: 'windows' 
-        target: 'desktop'
-        arch: 'win64_msvc2019_64'
-        # Без указания modules - установятся только базовые
-
-    - name: Сборка
-      shell: pwsh
-      run: |
-        mkdir build
-        cd build
-        cmake -G "Visual Studio 17 2022" -A x64 ..
-        cmake --build . --config Release --parallel 2
+      - name: Проверка доступных модулей Qt
+        shell: pwsh
+        run: |
+          # Устанавливаем aqtinstall
+          pip install aqtinstall
+          
+          echo "=== Доступные версии Qt для Windows ==="
+          aqt list-qt windows desktop
+          
+          echo "=== Модули для Qt 6.6.2 ==="
+          aqt list-qt windows desktop --modules 6.6.2
+          
+          echo "=== Модули для Qt 5.15.2 ==="
+          aqt list-qt windows desktop --modules 5.15.2
