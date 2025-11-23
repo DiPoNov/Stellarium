@@ -1,4 +1,4 @@
-name: "Узнаем доступные модули Qt"
+name: "Проверка модулей Qt с архитектурой"
 
 on: [push]
 
@@ -9,14 +9,13 @@ jobs:
       - name: Проверка доступных модулей Qt
         shell: pwsh
         run: |
-          # Устанавливаем aqtinstall
           pip install aqtinstall
           
-          echo "=== Доступные версии Qt для Windows ==="
-          aqt list-qt windows desktop
+          echo "=== Модули для Qt 6.6.2 win64_msvc2019_64 ==="
+          aqt list-qt windows desktop --modules 6.6.2 win64_msvc2019_64
           
-          echo "=== Модули для Qt 6.6.2 ==="
-          aqt list-qt windows desktop --modules 6.6.2
+          echo "=== Модули для Qt 5.15.2 win64_msvc2019_64 ==="
+          aqt list-qt windows desktop --modules 5.15.2 win64_msvc2019_64
           
-          echo "=== Модули для Qt 5.15.2 ==="
-          aqt list-qt windows desktop --modules 5.15.2
+          echo "=== Модули для Qt 5.15.2 win64_mingw81 ==="
+          aqt list-qt windows desktop --modules 5.15.2 win64_mingw81
