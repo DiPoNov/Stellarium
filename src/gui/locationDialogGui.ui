@@ -399,10 +399,10 @@
                <string> m</string>
               </property>
               <property name="minimum">
-               <number>-2000</number>
+               <number>-10000000</number>
               </property>
               <property name="maximum">
-               <number>200000</number>
+               <number>10000000</number>
               </property>
               <property name="singleStep">
                <number>100</number>

@@ -1724,13 +1724,32 @@ Vec3d Planet::getJ2000EquatorialPos(const StelCore *core) const
 // GZ: Note that such a scheme is highly confusing, and should be avoided. IAU models use the J2000 ICRF frame.
 // TODO: It is unclear what other planets should deliver here.
 //     In any case, re.obliquity could now be updated during computeTransMatrix()
-double Planet::getRotObliquity(double JDE) const
-{
-	// JDE=2451545.0 for J2000.0
-	if (englishName==L1S("Earth"))
-		return getPrecessionAngleVondrakEpsilon(JDE);
-	else
-		return static_cast<double>(re.obliquity);
+// В Planet.hpp
+public:
+    static void setForcedObliquityRadians(double rad);
+    static void enableForcedObliquity(bool on);
+private:
+    static double s_forcedObliquity;
+    static bool s_forceObliquity;
+
+// В Planet.cpp
+double Planet::s_forcedObliquity = 0.0;
+bool Planet::s_forceObliquity = false;
+
+void Planet::setForcedObliquityRadians(double rad) {
+    s_forcedObliquity = rad;
+}
+
+void Planet::enableForcedObliquity(bool on) {
+    s_forceObliquity = on;
+}
+
+double Planet::getRotObliquity(double JDE) const {
+    if (s_forceObliquity) {
+        return s_forcedObliquity;
+    } else {
+        return static_cast<double>(re.obliquity);
+    }
 }
 
 // Find out if p casts a shadow onto thisPlanet
