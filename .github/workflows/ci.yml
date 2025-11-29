@@ -1,227 +1,81 @@
-name: "Сборка Stellarium для Windows"
+name: Build Stellarium Windows
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
+    branches: [ main, master ]
+  workflow_dispatch: # Позволяет запускать сборку вручную кнопку
 
 env:
   BUILD_TYPE: Release
+  QT_VERSION: '5.15.2'             # Версия Qt (как у тебя в старом скрипте)
+  QT_ARCH: 'win64_msvc2019_64'     # Архитектура
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
 
     steps:
-      # Шаг 1: Клонирование репозитория
-      - name: Клонирование репозитория
+      # 1. Забираем код репозитория со всеми подмодулями
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # Шаг 2: Установка Qt с ВСЕМИ нужными модулями для Stellarium
-      - name: Установка Qt
+      # 2. Устанавливаем Qt
+      - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '5.15.2'
+          version: ${{ env.QT_VERSION }}
           host: 'windows'
           target: 'desktop'
-          arch: 'win64_msvc2019_64'
+          arch: ${{ env.QT_ARCH }}
           modules: 'qtcharts qtscript'
+          cache: true # Кэширование ускорит повторные сборки
 
-      # Шаг 3: Установка дополнительных инструментов
-      - name: Установка дополнительных инструментов
+      # 3. Настраиваем окружение для сборки (MSVC)
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # 4. Конфигурация CMake
+      # Мы указываем установить Stellarium в папку ./dist
+      - name: Configure CMake
         shell: pwsh
         run: |
-          # Устанавливаем инструменты развертывания Qt
-          & "${env:QT_DIR}\..\..\Tools\QtInstallerFramework\4.*\bin\windeployqt.exe" --version
-          echo "Qt установлен в: $env:QT_DIR"
-
-      # Шаг 4: Конфигурация CMake
-      - name: Конфигурация CMake
-        shell: pwsh
-        run: |
-          mkdir build
-          cd build
-          cmake -G "Visual Studio 17 2022" -A x64 `
+          cmake -B build -G "NMake Makefiles" `
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
-            -DCMAKE_PREFIX_PATH="$env:QT_DIR" `
-            -DCMAKE_INSTALL_PREFIX="../install" `
-            "${{ github.workspace }}"
+            -DCMAKE_INSTALL_PREFIX="./dist" `
+            -DENABLE_MEDIA_SCRIPTING=OFF `
+            -DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR
 
-      # Шаг 5: Сборка
-      - name: Сборка
+      # 5. Сборка проекта
+      - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 4
 
-      # Шаг 6: Установка (для копирования всех файлов в одну папку)
-      - name: Установка
+      # 6. "Установка" в локальную папку
+      # Это соберет exe и все ресурсы Stellarium в папку ./dist
+      - name: Install to local directory
         run: cmake --install build --config ${{ env.BUILD_TYPE }}
 
-      # Шаг 7: Поиск windeployqt и копирование зависимостей Qt
-      - name: Копирование зависимостей Qt
-        if: success()
+      # 7. Автоматическое подтягивание DLL (Windeployqt)
+      # Самый важный шаг. Он сам найдет нужные DLL Qt и положит их рядом с exe
+      - name: Deploy Qt Dependencies
         shell: pwsh
         run: |
-          # Ищем исполняемый файл в папке установки
-          $installDir = "install"
-          $exeFile = Get-ChildItem -Path $installDir -Recurse -Include "stellarium.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          
-          if (-not $exeFile) {
-            # Если не нашли в install, ищем в build
-            $exeFile = Get-ChildItem -Path build -Recurse -Include "stellarium.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            $installDir = $exeFile.DirectoryName
-          } else {
-            $installDir = $exeFile.DirectoryName
-          }
-          
-          if ($exeFile) {
-            echo "Найден stellarium.exe: $($exeFile.FullName)"
-            echo "Рабочая директория: $installDir"
-            
-            # Добавляем Qt в PATH для доступа к windeployqt
-            $env:PATH = "$env:QT_DIR\bin;$env:PATH"
-            
-            # Ищем windeployqt
-            $windeployqt = Get-Command windeployqt -ErrorAction SilentlyContinue
-            if (-not $windeployqt) {
-              # Альтернативный поиск
-              $windeployqt = Get-ChildItem -Path "C:\" -Recurse -Filter "windeployqt.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($windeployqt) {
-                $windeployqt = $windeployqt.FullName
-              }
-            } else {
-              $windeployqt = $windeployqt.Source
-            }
-            
-            if ($windeployqt) {
-              echo "Найден windeployqt: $windeployqt"
-              
-              # Переходим в папку с exe для правильной работы windeployqt
-              Push-Location $installDir
-              try {
-                # Запускаем windeployqt с правильными параметрами
-                & "$windeployqt" --release --no-compiler-runtime --no-angle --no-opengl-sw "stellarium.exe"
-                echo "windeployqt выполнен успешно"
-              } catch {
-                echo "Ошибка при выполнении windeployqt: $_"
-              } finally {
-                Pop-Location
-              }
-            } else {
-              echo "Ошибка: windeployqt не найден"
-              echo "Доступные пути:"
-              Get-ChildItem -Path "$env:QT_DIR" -Recurse -Include "windeployqt.exe" -ErrorAction SilentlyContinue | Format-Table FullName
-            }
-          } else {
-            echo "Ошибка: stellarium.exe не найден"
-          }
+          $exePath = "./dist/bin/stellarium.exe"
+          echo "Deploying Qt binaries for $exePath..."
+          windeployqt --release --no-translations --compiler-runtime --dir "./dist/bin" $exePath
 
-      # Шаг 8: Ручное копирование DLL (резервный метод)
-      - name: Ручное копирование зависимостей
-        if: success()
+      # 8. Упаковка в ZIP
+      - name: Pack Artifacts
         shell: pwsh
         run: |
-          $installDir = "install"
-          $exeFile = Get-ChildItem -Path $installDir -Recurse -Include "stellarium.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          
-          if (-not $exeFile) {
-            $exeFile = Get-ChildItem -Path build -Recurse -Include "stellarium.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            $installDir = $exeFile.DirectoryName
-          }
-          
-          if ($exeFile) {
-            echo "Ручное копирование DLL в: $installDir"
-            
-            # Основные DLL которые нужны Stellarium
-            $requiredDlls = @(
-              "Qt5Core.dll", "Qt5Gui.dll", "Qt5Widgets.dll", 
-              "Qt5Network.dll", "Qt5OpenGL.dll", "Qt5PrintSupport.dll",
-              "Qt5Svg.dll", "Qt5Script.dll", "Qt5Charts.dll",
-              "Qt5Concurrent.dll", "Qt5Sql.dll", "Qt5Test.dll"
-            )
-            
-            # Копируем из bin директории Qt
-            $qtBinPath = "$env:QT_DIR\bin"
-            foreach ($dll in $requiredDlls) {
-              $srcPath = "$qtBinPath\$dll"
-              if (Test-Path $srcPath) {
-                Copy-Item -Path $srcPath -Destination $installDir -Force
-                echo "Скопирован: $dll"
-              } else {
-                echo "Не найден: $dll"
-              }
-            }
-            
-            # Копируем папки с плагинами
-            $pluginSrc = "$env:QT_DIR\plugins"
-            $pluginDirs = @('platforms', 'iconengines', 'imageformats', 'styles', 'script')
-            
-            foreach ($dir in $pluginDirs) {
-              $srcDir = "$pluginSrc\$dir"
-              $destDir = "$installDir\$dir"
-              
-              if (Test-Path $srcDir) {
-                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-                Copy-Item -Path "$srcDir\*" -Destination $destDir -Recurse -Force
-                echo "Скопированы плагины: $dir"
-              }
-            }
-            
-            # Копируем ICU библиотеки (важно для Qt)
-            $icuDlls = Get-ChildItem -Path $qtBinPath -Filter "icu*.dll" -ErrorAction SilentlyContinue
-            foreach ($icuDll in $icuDlls) {
-              Copy-Item -Path $icuDll.FullName -Destination $installDir -Force
-              echo "Скопирован: $($icuDll.Name)"
-            }
-          }
+          $packageName = "stellarium-windows-x64-${{ github.sha }}".Substring(0, 28)
+          Compress-Archive -Path "./dist/bin/*" -DestinationPath "${packageName}.zip"
 
-      # Шаг 9: Проверка финальной сборки
-      - name: Проверка финальной сборки
-        shell: pwsh
-        run: |
-          $installDir = "install"
-          if (Test-Path $installDir) {
-            echo "=== Содержимое папки установки ==="
-            Get-ChildItem -Path $installDir -Recurse | Format-Table Name, Length
-            
-            $exeFile = Get-ChildItem -Path $installDir -Recurse -Include "stellarium.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($exeFile) {
-              echo "stellarium.exe найден: $($exeFile.FullName)"
-              echo "Размер: $($exeFile.Length) байт"
-              
-              # Проверяем зависимости
-              echo "=== Проверка зависимостей ==="
-              $dlls = Get-ChildItem -Path $installDir -Filter "*.dll" | Select-Object Name
-              echo "Найдено DLL: $($dlls.Count)"
-              $dlls | Format-Table Name
-            }
-          }
-
-      # Шаг 10: Создание дистрибутива
-      - name: Создание пакета
-        if: success()
-        shell: pwsh
-        run: |
-          $installDir = "install"
-          if (Test-Path $installDir) {
-            $version = if ($env:GITHUB_REF -like "refs/tags/*") { 
-              $env:GITHUB_REF -replace "refs/tags/v", "" 
-            } else { 
-              "dev-$($env:GITHUB_SHA.Substring(0, 7))" 
-            }
-            
-            $zipName = "stellarium-$version-windows-x64.zip"
-            Compress-Archive -Path "$installDir\*" -DestinationPath $zipName
-            
-            echo "Создан архив: $zipName"
-            Get-Item $zipName | Format-Table Name, Length
-          }
-
-      # Шаг 11: Загрузка артефакта
-      - name: Загрузка результата
-        if: success()
+      # 9. Загрузка результата в GitHub Actions
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: stellarium-windows
-          path: stellarium-*-windows-x64.zip
-          retention-days: 30
+          name: Stellarium-Build
+          path: "*.zip"
+          retention-days: 7
