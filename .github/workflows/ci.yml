@@ -1,21 +1,21 @@
-name: Build Stellarium Windows
+name: Build Stellarium Windows (RU/EN Only)
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Позволяет запускать сборку вручную кнопку
+  workflow_dispatch:
 
 env:
   BUILD_TYPE: Release
-  QT_VERSION: '5.15.2'             # Версия Qt (как у тебя в старом скрипте)
-  QT_ARCH: 'win64_msvc2019_64'     # Архитектура
+  QT_VERSION: '5.15.2'
+  QT_ARCH: 'win64_msvc2019_64'
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      # 1. Забираем код репозитория со всеми подмодулями
+      # 1. Забираем код
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -30,14 +30,14 @@ jobs:
           target: 'desktop'
           arch: ${{ env.QT_ARCH }}
           modules: 'qtcharts qtscript'
-          cache: true # Кэширование ускорит повторные сборки
+          cache: true
 
-      # 3. Настраиваем окружение для сборки (MSVC)
+      # 3. Настраиваем MSVC
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       # 4. Конфигурация CMake
-      # Мы указываем установить Stellarium в папку ./dist
+      # ВАЖНО: ENABLE_NLS=ON нужен для генерации русского языка
       - name: Configure CMake
         shell: pwsh
         run: |
@@ -45,37 +45,72 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
             -DCMAKE_INSTALL_PREFIX="./dist" `
             -DENABLE_MEDIA_SCRIPTING=OFF `
+            -DENABLE_NLS=ON `
             -DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR
 
-      # 5. Сборка проекта
+      # 5. Сборка (займет чуть больше времени из-за генерации языков)
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 4
 
-      # 6. "Установка" в локальную папку
-      # Это соберет exe и все ресурсы Stellarium в папку ./dist
+      # 6. Установка
       - name: Install to local directory
         run: cmake --install build --config ${{ env.BUILD_TYPE }}
 
-      # 7. Автоматическое подтягивание DLL (Windeployqt)
-      # Самый важный шаг. Он сам найдет нужные DLL Qt и положит их рядом с exe
+      # 7. Копирование недостающей SpoutLibrary.dll
+      - name: Copy Missing DLLs (Spout)
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Path build -Recurse -Filter "SpoutLibrary.dll" | Select-Object -First 1
+          if ($dll) {
+            Copy-Item -Path $dll.FullName -Destination "./dist/bin" -Force
+            echo "SpoutLibrary.dll скопирована."
+          }
+
+      # 8. (НОВОЕ) Удаление всех языков кроме Русского
+      # Английский язык вшит внутри exe, файл для него не нужен.
+      # Мы ищем папку translations и удаляем всё, что не содержит "ru" в названии.
+      - name: Filter Translations (Keep only RU)
+        shell: pwsh
+        run: |
+          echo "Очистка лишних языков..."
+          # Ищем папку с переводами в директории установки
+          $transPath = Get-ChildItem -Path "./dist" -Recurse -Directory -Filter "translations" | Select-Object -First 1
+          
+          if ($transPath) {
+            echo "Папка переводов найдена: $($transPath.FullName)"
+            
+            # Удаляем все файлы, имя которых НЕ заканчивается на 'ru.qm'
+            # Это сохранит stellarium-ru.qm и удалит stellarium-fr.qm, stellarium-de.qm и т.д.
+            Get-ChildItem -Path $transPath.FullName | Where-Object { 
+              $_.Name -notlike "*ru.qm"
+            } | Remove-Item -Force
+            
+            echo "Оставшиеся языки:"
+            Get-ChildItem -Path $transPath.FullName | Select-Object Name
+          } else {
+            echo "ВНИМАНИЕ: Папка translations не найдена!"
+          }
+
+      # 9. Подтягиваем зависимости Qt
       - name: Deploy Qt Dependencies
         shell: pwsh
         run: |
           $exePath = "./dist/bin/stellarium.exe"
-          echo "Deploying Qt binaries for $exePath..."
+          # --no-translations здесь означает, что мы не тянем переводы самого Qt (системные диалоги), 
+          # чтобы сэкономить место. Интерфейс Stellarium будет на русском.
           windeployqt --release --no-translations --compiler-runtime --dir "./dist/bin" $exePath
 
-      # 8. Упаковка в ZIP
+      # 10. Упаковка
       - name: Pack Artifacts
         shell: pwsh
         run: |
-          $packageName = "stellarium-windows-x64-${{ github.sha }}".Substring(0, 28)
+          $packageName = "stellarium-windows-x64-RU-EN-${{ github.sha }}".Substring(0, 34)
           Compress-Archive -Path "./dist/bin/*" -DestinationPath "${packageName}.zip"
 
-      # 9. Загрузка результата в GitHub Actions
+      # 11. Загрузка
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Stellarium-Build
+          name: Stellarium-Build-RU
           path: "*.zip"
           retention-days: 7
