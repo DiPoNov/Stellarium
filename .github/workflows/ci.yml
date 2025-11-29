@@ -79,18 +79,6 @@ jobs:
             }
           }
 
-      # 9. ЧИСТКА: Удаляем все языки кроме Русского (чтобы уменьшить размер)
-      - name: Filter Translations (Keep only RU)
-        shell: pwsh
-        run: |
-          $transPath = Get-ChildItem -Path "./dist" -Recurse -Directory -Filter "translations" | Select-Object -First 1
-          if ($transPath) {
-            Get-ChildItem -Path $transPath.FullName | Where-Object { 
-              $_.Name -notlike "*ru.qm"
-            } | Remove-Item -Force
-            echo "Оставлен только Русский язык."
-          }
-
       # 10. ВАЖНО: Собираем все DLL в кучу (Deploy)
       # Добавлен --no-angle, чтобы не было черного экрана
       - name: Deploy Qt Dependencies
