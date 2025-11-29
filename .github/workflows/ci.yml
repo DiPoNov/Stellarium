@@ -1,4 +1,4 @@
-name: Build Stellarium Windows (RU/EN Only)
+name: Build Stellarium (My Custom Build)
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 
 env:
   BUILD_TYPE: Release
+  # Используем 5.15.2 - это самая стабильная версия для "домашних" сборок
   QT_VERSION: '5.15.2'
   QT_ARCH: 'win64_msvc2019_64'
 
@@ -15,13 +16,13 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1. Забираем код
+      # 1. Скачиваем код
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # 2. Устанавливаем Qt
+      # 2. Устанавливаем Qt (Библиотеки)
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -32,12 +33,11 @@ jobs:
           modules: 'qtcharts qtscript'
           cache: true
 
-      # 3. Настраиваем MSVC
+      # 3. Настраиваем компилятор
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      # 4. Конфигурация CMake
-      # ВАЖНО: ENABLE_NLS=ON нужен для генерации русского языка
+      # 4. Настройка CMake (Включаем русский язык!)
       - name: Configure CMake
         shell: pwsh
         run: |
@@ -48,16 +48,16 @@ jobs:
             -DENABLE_NLS=ON `
             -DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR
 
-      # 5. Сборка (займет чуть больше времени из-за генерации языков)
+      # 5. Сборка (Превращаем код в .exe)
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 4
 
-      # 6. Установка
+      # 6. Установка в папку dist
       - name: Install to local directory
         run: cmake --install build --config ${{ env.BUILD_TYPE }}
 
-      # 7. Копирование недостающей SpoutLibrary.dll
-      - name: Copy Missing DLLs (Spout)
+      # 7. ИСПРАВЛЕНИЕ: Копируем SpoutLibrary (чтобы не было ошибки DLL)
+      - name: Copy SpoutLibrary
         shell: pwsh
         run: |
           $dll = Get-ChildItem -Path build -Recurse -Filter "SpoutLibrary.dll" | Select-Object -First 1
@@ -66,26 +66,50 @@ jobs:
             echo "SpoutLibrary.dll скопирована."
           }
 
-      # 9. Подтягиваем зависимости Qt
+      # 8. ИСПРАВЛЕНИЕ: Копируем OpenSSL (чтобы работала сеть)
+      - name: Copy OpenSSL DLLs
+        shell: pwsh
+        run: |
+          $binDir = "$env:QT_DIR\bin"
+          $destDir = "./dist/bin"
+          $sslDlls = @('libssl-1_1-x64.dll', 'libcrypto-1_1-x64.dll')
+          foreach ($dll in $sslDlls) {
+            if (Test-Path "$binDir\$dll") {
+              Copy-Item -Path "$binDir\$dll" -Destination $destDir -Force
+            }
+          }
+
+      # 9. ЧИСТКА: Удаляем все языки кроме Русского (чтобы уменьшить размер)
+      - name: Filter Translations (Keep only RU)
+        shell: pwsh
+        run: |
+          $transPath = Get-ChildItem -Path "./dist" -Recurse -Directory -Filter "translations" | Select-Object -First 1
+          if ($transPath) {
+            Get-ChildItem -Path $transPath.FullName | Where-Object { 
+              $_.Name -notlike "*ru.qm"
+            } | Remove-Item -Force
+            echo "Оставлен только Русский язык."
+          }
+
+      # 10. ВАЖНО: Собираем все DLL в кучу (Deploy)
+      # Добавлен --no-angle, чтобы не было черного экрана
       - name: Deploy Qt Dependencies
         shell: pwsh
         run: |
           $exePath = "./dist/bin/stellarium.exe"
-          # --no-translations здесь означает, что мы не тянем переводы самого Qt (системные диалоги), 
-          # чтобы сэкономить место. Интерфейс Stellarium будет на русском.
-          windeployqt --release --no-translations --compiler-runtime --dir "./dist/bin" $exePath
+          windeployqt --release --no-translations --compiler-runtime --no-angle --no-opengl-sw --dir "./dist/bin" $exePath
 
-      # 10. Упаковка
+      # 11. Создаем ZIP архив
       - name: Pack Artifacts
         shell: pwsh
         run: |
-          $packageName = "stellarium-windows-x64-RU-EN-${{ github.sha }}".Substring(0, 34)
+          $packageName = "stellarium-RU-EN-${{ github.sha }}".Substring(0, 24)
           Compress-Archive -Path "./dist/bin/*" -DestinationPath "${packageName}.zip"
 
-      # 11. Загрузка
+      # 12. ЗАГРУЖАЕМ файл, чтобы ты мог его скачать
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Stellarium-Build-RU
+          name: Stellarium-Ready-To-Play
           path: "*.zip"
           retention-days: 7
