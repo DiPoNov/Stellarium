@@ -66,31 +66,6 @@ jobs:
             echo "SpoutLibrary.dll скопирована."
           }
 
-      # 8. (НОВОЕ) Удаление всех языков кроме Русского
-      # Английский язык вшит внутри exe, файл для него не нужен.
-      # Мы ищем папку translations и удаляем всё, что не содержит "ru" в названии.
-      - name: Filter Translations (Keep only RU)
-        shell: pwsh
-        run: |
-          echo "Очистка лишних языков..."
-          # Ищем папку с переводами в директории установки
-          $transPath = Get-ChildItem -Path "./dist" -Recurse -Directory -Filter "translations" | Select-Object -First 1
-          
-          if ($transPath) {
-            echo "Папка переводов найдена: $($transPath.FullName)"
-            
-            # Удаляем все файлы, имя которых НЕ заканчивается на 'ru.qm'
-            # Это сохранит stellarium-ru.qm и удалит stellarium-fr.qm, stellarium-de.qm и т.д.
-            Get-ChildItem -Path $transPath.FullName | Where-Object { 
-              $_.Name -notlike "*ru.qm"
-            } | Remove-Item -Force
-            
-            echo "Оставшиеся языки:"
-            Get-ChildItem -Path $transPath.FullName | Select-Object Name
-          } else {
-            echo "ВНИМАНИЕ: Папка translations не найдена!"
-          }
-
       # 9. Подтягиваем зависимости Qt
       - name: Deploy Qt Dependencies
         shell: pwsh
